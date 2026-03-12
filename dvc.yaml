@@ -1,0 +1,77 @@
+stages:
+  data_ingestion:
+    cmd: python src/bananaPredictor/pipeline/stage_01_data_ingestion.py
+    deps:
+      - src/bananaPredictor/pipeline/stage_01_data_ingestion.py
+      - src/bananaPredictor/components/data_ingestion.py
+      - config/config.yaml
+    outs:
+      - artifacts/data_ingestion/banana_dataset
+
+  segmentation_validation:
+    cmd: python src/bananaPredictor/pipeline/stage_02_segmentation_validation.py
+    deps:
+      - src/bananaPredictor/pipeline/stage_02_segmentation_validation.py
+      - src/bananaPredictor/components/segmentation_validator.py
+      - artifacts/data_ingestion/banana_dataset/val
+      - config/config.yaml
+      - model/segmentation_model/weights/best.pt
+    outs:
+      - artifacts/segmentation_validation/validation_report.json
+
+  prepare_base_model:
+    cmd: python src/bananaPredictor/pipeline/stage_03_prepare_base_model.py
+    deps:
+      - src/bananaPredictor/pipeline/stage_03_prepare_base_model.py
+      - src/bananaPredictor/components/prepare_base_model.py
+      - config/config.yaml
+    params:
+      - IMAGE_SIZE
+      - INCLUDE_TOP
+      - WEIGHTS
+      - ARCHITECTURE
+      - HEAD_UNITS
+      - DROPOUT_RATE
+    outs:
+      - artifacts/prepare_base_model/base_efficientnet.h5
+      - artifacts/prepare_base_model/efficientnet_updated.h5
+
+  model_training:
+    cmd: python src/bananaPredictor/pipeline/stage_04_model_trainer.py
+    deps:
+      - src/bananaPredictor/pipeline/stage_04_model_trainer.py
+      - src/bananaPredictor/components/model_trainer.py
+      - artifacts/prepare_base_model/efficientnet_updated.h5
+      - artifacts/data_ingestion/banana_dataset/train
+      - artifacts/data_ingestion/banana_dataset/val
+      - config/config.yaml
+    params:
+      - PHASE_1_EPOCHS
+      - PHASE_2_EPOCHS
+      - PHASE_3_EPOCHS
+      - BATCH_SIZE
+      - PHASE_1_LR
+      - PHASE_2_LR
+      - PHASE_3_LR
+      - PHASE_2_UNFREEZE_LAYERS
+      - AUGMENTATION
+    outs:
+      - artifacts/training/regression_model.h5
+      - artifacts/training/training_history.json
+
+  model_evaluation:
+    cmd: python src/bananaPredictor/pipeline/stage_05_model_evaluation.py
+    deps:
+      - src/bananaPredictor/pipeline/stage_05_model_evaluation.py
+      - src/bananaPredictor/components/model_evaluation.py
+      - artifacts/training/regression_model.h5
+      - artifacts/data_ingestion/banana_dataset/test
+      - config/config.yaml
+    params:
+      - IMAGE_SIZE
+      - BATCH_SIZE
+    metrics:
+      - scores.json:
+          cache: false
+    outs:
+      - artifacts/evaluation/metrics.json

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banana Days-to-Death Predictor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #fef9e7 0%, #fdebd0 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            background: linear-gradient(90deg, #f9e547 0%, #f0c929 100%);
+            width: 100%;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2rem;
+        }
+
+        .header p {
+            color: #555;
+            margin-top: 5px;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 90%;
+            margin: 30px auto;
+        }
+
+        .upload-section {
+            background: #fff;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            margin-bottom: 30px;
+        }
+
+        .drop-zone {
+            border: 3px dashed #f0c929;
+            border-radius: 12px;
+            padding: 40px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #fffdf0;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            border-color: #e6b800;
+            background: #fff8d6;
+        }
+
+        .drop-zone p {
+            font-size: 1.1rem;
+            color: #666;
+        }
+
+        .drop-zone .icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(90deg, #f9e547, #f0c929);
+            border: none;
+            padding: 12px 40px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            color: #333;
+            font-weight: bold;
+            margin-top: 15px;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .preview {
+            margin-top: 20px;
+        }
+
+        .preview img {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .results-section {
+            background: #fff;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            display: none;
+        }
+
+        .results-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .card {
+            background: #fffdf0;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            border-left: 4px solid #f0c929;
+        }
+
+        .card .value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .card .label {
+            color: #777;
+            font-size: 0.85rem;
+            margin-top: 5px;
+        }
+
+        .predictions-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .predictions-table th,
+        .predictions-table td {
+            padding: 10px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .predictions-table th {
+            background: #f9e547;
+            color: #333;
+        }
+
+        .category-badge {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            display: inline-block;
+        }
+
+        .category-green {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .category-yellow {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .category-spotted {
+            background: #ffe0b2;
+            color: #e65100;
+        }
+
+        .category-overripe {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .annotated-image {
+            margin-top: 25px;
+            text-align: center;
+        }
+
+        .annotated-image img {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 2px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        .spinner {
+            display: none;
+            margin: 20px auto;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #f0c929;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error-msg {
+            color: #dc3545;
+            margin-top: 15px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>&#127820; Banana Days-to-Death Predictor</h1>
+        <p>Upload a photo of bananas to predict how many days until they become inedible</p>
+    </div>
+
+    <div class="container">
+        <div class="upload-section">
+            <div class="drop-zone" id="dropZone">
+                <div class="icon">&#128247;</div>
+                <p>Drag & drop a banana image here<br>or click to browse</p>
+            </div>
+            <input type="file" id="fileInput" accept="image/*">
+
+            <div class="preview" id="preview" style="display:none;">
+                <img id="previewImg" alt="Preview">
+            </div>
+
+            <br>
+            <button class="btn" id="predictBtn" disabled>&#128270; Predict</button>
+
+            <div class="spinner" id="spinner"></div>
+            <p class="error-msg" id="errorMsg"></p>
+        </div>
+
+        <div class="results-section" id="results">
+            <h2>&#128202; Prediction Results</h2>
+
+            <div class="summary-cards" id="summaryCards"></div>
+
+            <div class="annotated-image" id="annotatedSection" style="display:none;">
+                <h3>Annotated Image</h3>
+                <img id="annotatedImg" alt="Annotated">
+            </div>
+
+            <h3 style="margin-top:25px;">Per-Banana Predictions</h3>
+            <table class="predictions-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Days Left</th>
+                        <th>Category</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody id="predictionsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const previewImg = document.getElementById('previewImg');
+        const predictBtn = document.getElementById('predictBtn');
+        const spinner = document.getElementById('spinner');
+        const errorMsg = document.getElementById('errorMsg');
+        const results = document.getElementById('results');
+
+        let selectedFile = null;
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) handleFile(files[0]);
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) handleFile(fileInput.files[0]);
+        });
+
+        function handleFile(file) {
+            selectedFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImg.src = e.target.result;
+                preview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+            predictBtn.disabled = false;
+            errorMsg.style.display = 'none';
+            results.style.display = 'none';
+        }
+
+        predictBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            predictBtn.disabled = true;
+            spinner.style.display = 'block';
+            errorMsg.style.display = 'none';
+            results.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('image', selectedFile);
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Prediction failed');
+                }
+
+                displayResults(data);
+            } catch (err) {
+                errorMsg.textContent = err.message;
+                errorMsg.style.display = 'block';
+            } finally {
+                spinner.style.display = 'none';
+                predictBtn.disabled = false;
+            }
+        });
+
+        function displayResults(data) {
+            // Summary cards
+            const summaryCards = document.getElementById('summaryCards');
+            const s = data.summary;
+            summaryCards.innerHTML = `
+                <div class="card">
+                    <div class="value">${data.total_bananas}</div>
+                    <div class="label">Bananas Detected</div>
+                </div>
+                <div class="card">
+                    <div class="value">${s.avg_days}</div>
+                    <div class="label">Avg Days Left</div>
+                </div>
+                <div class="card">
+                    <div class="value">${s.fresh_count}</div>
+                    <div class="label">Fresh (Green)</div>
+                </div>
+                <div class="card">
+                    <div class="value">${s.ripe_count}</div>
+                    <div class="label">Ripe</div>
+                </div>
+                <div class="card">
+                    <div class="value">${s.overripe_count}</div>
+                    <div class="label">Overripe</div>
+                </div>
+            `;
+
+            // Annotated image
+            if (data.annotated_image_base64) {
+                document.getElementById('annotatedImg').src =
+                    'data:image/jpeg;base64,' + data.annotated_image_base64;
+                document.getElementById('annotatedSection').style.display = 'block';
+            }
+
+            // Predictions table
+            const tbody = document.getElementById('predictionsBody');
+            tbody.innerHTML = '';
+            data.predictions.forEach(p => {
+                const catClass = 'category-' + p.category;
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${p.banana_id}</td>
+                        <td><strong>${p.days_left}</strong> days</td>
+                        <td><span class="category-badge ${catClass}">${p.category}</span></td>
+                        <td>${(p.segmentation_confidence * 100).toFixed(1)}%</td>
+                    </tr>
+                `;
+            });
+
+            results.style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>

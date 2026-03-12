@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+
+# Artifacts (tracked by DVC)
+artifacts/
+
+# MLflow
+mlruns/
+
+# Model weights (large files)
+model/segmentation_model/weights/best.pt
+model/regression_model.h5
+
+# Temp uploads
+temp_uploads/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# DVC local cache
+.dvc/cache/
+.dvc/tmp/

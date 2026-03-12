@@ -1,0 +1,1003 @@
+================================================================================
+         BANANA DAYS-TO-DEATH PREDICTOR — DETAILED PROJECT REPORT
+================================================================================
+
+Author  : Sujal Vairagi
+Date    : March 2026
+Version : 0.0.1
+Type    : End-to-End Machine Learning Pipeline
+Stack   : Python 3.10 | TensorFlow | YOLOv8 | Flask | DVC | MLflow | Docker
+
+================================================================================
+                           TABLE OF CONTENTS
+================================================================================
+
+  1. PROJECT OVERVIEW
+  2. PROBLEM STATEMENT
+  3. TECHNICAL APPROACH
+  4. PROJECT STRUCTURE (ALL FILES)
+  5. WHAT EACH FILE DOES (DETAILED)
+  6. PIPELINE STAGES EXPLAINED
+  7. MODEL ARCHITECTURES
+  8. CUSTOM LOSS FUNCTION
+  9. EVALUATION METRICS
+  10. HOW TO SET UP THE PROJECT (STEP-BY-STEP)
+  11. HOW TO RUN THE TRAINING PIPELINE
+  12. HOW TO RUN THE WEB APPLICATION
+  13. HOW TO MODIFY HYPERPARAMETERS
+  14. HOW TO USE YOUR ROBOFLOW MODEL
+  15. HOW TO USE DVC FOR REPRODUCIBILITY
+  16. HOW TO USE MLFLOW FOR EXPERIMENT TRACKING
+  17. DOCKER DEPLOYMENT
+  18. CI/CD WITH GITHUB ACTIONS
+  19. TROUBLESHOOTING COMMON ISSUES
+  20. INNOVATION FEATURES
+  21. DEPENDENCIES LIST
+  22. FUTURE IMPROVEMENTS
+
+================================================================================
+  1. PROJECT OVERVIEW
+================================================================================
+
+This project is a production-grade, end-to-end machine learning system that
+predicts how many days each banana in a photograph has before becoming inedible.
+
+It uses a TWO-STAGE approach:
+  - Stage A: Instance Segmentation (YOLOv8 trained on Roboflow) to detect and
+             isolate each individual banana in the image.
+  - Stage B: Regression (EfficientNet-B0 fine-tuned) to predict the number of
+             days until death for each isolated banana crop.
+
+The system is built with a modular, reproducible architecture following MLOps
+best practices:
+  - DVC for data/model versioning and pipeline reproducibility
+  - MLflow for experiment tracking
+  - Flask REST API for serving predictions
+  - Docker for containerized deployment
+  - GitHub Actions for CI/CD
+
+================================================================================
+  2. PROBLEM STATEMENT
+================================================================================
+
+When a vendor or buyer photographs banana bunches at a market, the system should:
+
+  1. Detect each individual banana in the image (even in bunches)
+  2. Predict the number of days remaining until each banana is inedible
+  3. Display results with bounding boxes, day predictions, and ripeness category
+  4. Provide aggregate statistics (average days, count by category)
+
+Ripeness Categories:
+  - GREEN      : > 6 days remaining (fresh, not yet ripe)
+  - YELLOW     : 4–6 days remaining (ripe, ready to eat)
+  - SPOTTED    : 1–3 days remaining (very ripe, eat soon)
+  - OVERRIPE   : 0 days remaining (past edible state)
+
+================================================================================
+  3. TECHNICAL APPROACH
+================================================================================
+
+  Input Image (with multiple bananas)
+       |
+       v
+  [YOLOv8 Instance Segmentation] ------> Bounding boxes for each banana
+       |
+       v
+  [Crop each banana individually]
+       |
+       v
+  [EfficientNet-B0 Regression Model] --> Days-to-death per banana
+       |
+       v
+  [Annotated output + JSON response]
+       |
+       v
+  Per-banana: {banana_id, bbox, days_left, category, confidence}
+  Summary:    {avg_days, fresh_count, ripe_count, overripe_count}
+
+================================================================================
+  4. PROJECT STRUCTURE (ALL FILES)
+================================================================================
+
+banana-days-predictor/
+|
+|-- .github/
+|   |-- workflows/
+|       |-- main.yaml                  # CI/CD GitHub Actions workflow
+|
+|-- config/
+|   |-- config.yaml                    # All paths, URLs, directory configs
+|
+|-- src/
+|   |-- bananaPredictor/               # Main Python package
+|       |-- __init__.py                # Logger setup (file + console)
+|       |-- constants/
+|       |   |-- __init__.py            # CONFIG_FILE_PATH, PARAMS_FILE_PATH
+|       |-- utils/
+|       |   |-- __init__.py            # Re-exports utility functions
+|       |   |-- common.py             # read_yaml, create_directories, save/load_json
+|       |-- entity/
+|       |   |-- __init__.py
+|       |   |-- config_entity.py       # 5 frozen dataclasses for config objects
+|       |-- config/
+|       |   |-- __init__.py
+|       |   |-- configuration.py       # ConfigurationManager (reads YAML -> dataclasses)
+|       |-- components/                # CORE ML LOGIC
+|       |   |-- __init__.py
+|       |   |-- data_ingestion.py      # Download, extract, split dataset
+|       |   |-- segmentation_validator.py  # Validate YOLOv8 model (local weights)
+|       |   |-- prepare_base_model.py  # EfficientNet + regression head
+|       |   |-- model_trainer.py       # 3-phase fine-tuning + custom loss
+|       |   |-- model_evaluation.py    # 6 metrics + MLflow logging
+|       |-- pipeline/                  # ORCHESTRATORS
+|           |-- __init__.py
+|           |-- stage_01_data_ingestion.py
+|           |-- stage_02_segmentation_validation.py
+|           |-- stage_03_prepare_base_model.py
+|           |-- stage_04_model_trainer.py
+|           |-- stage_05_model_evaluation.py
+|           |-- prediction.py          # Inference: segment -> regress -> annotate
+|
+|-- model/
+|   |-- segmentation_model/
+|   |   |-- weights/
+|   |       |-- best.pt               # <-- PUT YOUR ROBOFLOW MODEL HERE
+|   |-- regression_model.h5           # (auto-created after training)
+|
+|-- artifacts/                         # DVC-tracked outputs (auto-created)
+|   |-- data_ingestion/
+|   |-- segmentation_validation/
+|   |-- prepare_base_model/
+|   |-- training/
+|   |-- evaluation/
+|
+|-- templates/
+|   |-- index.html                     # Web UI (drag-and-drop upload)
+|
+|-- research/                          # Jupyter notebooks for prototyping
+|   |-- 01_data_ingestion.ipynb
+|   |-- 02_segmentation_testing.ipynb
+|   |-- 03_prepare_base_model.ipynb
+|   |-- 04_model_training.ipynb
+|   |-- 05_evaluation.ipynb
+|
+|-- logs/                              # Auto-generated log files
+|-- mlruns/                            # MLflow experiment tracking data
+|-- temp_uploads/                      # Temporary upload folder (Flask)
+|
+|-- main.py                            # Runs all 5 training stages
+|-- app.py                             # Flask web API server
+|-- params.yaml                        # ALL hyperparameters
+|-- dvc.yaml                           # DVC pipeline definition
+|-- scores.json                        # Evaluation metrics (DVC metric)
+|-- setup.py                           # Package installer
+|-- requirements.txt                   # Python dependencies
+|-- Dockerfile                         # Docker container definition
+|-- template.py                        # Project scaffolding script
+|-- README.md                          # Quick start guide
+
+Total: 40+ files across 15+ directories
+
+================================================================================
+  5. WHAT EACH FILE DOES (DETAILED)
+================================================================================
+
+--- CONFIGURATION FILES ---
+
+config/config.yaml
+  PURPOSE: Central configuration for all paths and URLs
+  CONTAINS:
+    - artifacts_root: Base directory for all outputs
+    - data_ingestion: Google Drive URL, zip path, dataset dirs, split ratios
+    - segmentation_validation: Local model path (best.pt), confidence threshold
+    - prepare_base_model: Base and updated model .h5 file paths
+    - training: Trained model path, data dirs, history path, MLflow URI
+    - evaluation: Test data path, metrics paths, scores file, MLflow URI
+  YOU NEED TO EDIT:
+    - source_URL: Replace with your Google Drive dataset link
+    - mlflow_uri: Replace with your DagsHub or local MLflow URI
+
+params.yaml
+  PURPOSE: All training hyperparameters in one place
+  CONTAINS:
+    - Augmentation settings (rotation, brightness, zoom, flip)
+    - Model architecture (EfficientNetB0, image size 224x224x3)
+    - Regression head (3 Dense layers: 512->256->128->1)
+    - 3-phase training schedule (epochs, learning rates, freeze settings)
+    - Loss function config (Huber delta=1.0, ordinal weight=0.3)
+    - Callback settings (TensorBoard, checkpoints, early stopping)
+
+--- PACKAGE FOUNDATION ---
+
+src/bananaPredictor/__init__.py
+  PURPOSE: Initialize the package-wide logger
+  CREATES: Logger named "bananaPredictor"
+  OUTPUTS TO: logs/running_logs.log (file) AND stdout (console)
+  FORMAT: [timestamp: LEVEL: module: message]
+
+src/bananaPredictor/constants/__init__.py
+  PURPOSE: Define constant file paths used everywhere
+  EXPORTS:
+    CONFIG_FILE_PATH = Path("config/config.yaml")
+    PARAMS_FILE_PATH = Path("params.yaml")
+
+src/bananaPredictor/utils/common.py
+  PURPOSE: Shared utility functions used across all components
+  FUNCTIONS:
+    read_yaml(path)          -> Reads YAML, returns ConfigBox (dot-access dict)
+    create_directories(list) -> Creates directories with exist_ok=True
+    save_json(path, data)    -> Writes dict to JSON file with indent=4
+    load_json(path)          -> Reads JSON, returns ConfigBox
+    save_bin(data, path)     -> Saves binary data with joblib
+    load_bin(path)           -> Loads binary data with joblib
+    get_size(path)           -> Returns file size as "~ X KB" string
+
+src/bananaPredictor/entity/config_entity.py
+  PURPOSE: Type-safe configuration objects (frozen dataclasses)
+  DEFINES 5 DATACLASSES:
+    1. DataIngestionConfig      - Paths + split ratios for dataset
+    2. SegmentationValidationConfig - YOLOv8 model path + validation params
+    3. PrepareBaseModelConfig   - Model paths + architecture params
+    4. TrainingConfig           - All training hyperparams (3 phases)
+    5. EvaluationConfig         - Test data + metrics paths + MLflow URI
+
+src/bananaPredictor/config/configuration.py
+  PURPOSE: Reads YAML files, constructs typed config objects
+  CLASS: ConfigurationManager
+  METHODS:
+    __init__()                           -> Reads config.yaml + params.yaml
+    get_data_ingestion_config()          -> Returns DataIngestionConfig
+    get_segmentation_validation_config() -> Returns SegmentationValidationConfig
+    get_prepare_base_model_config()      -> Returns PrepareBaseModelConfig
+    get_training_config()                -> Returns TrainingConfig
+    get_evaluation_config()              -> Returns EvaluationConfig
+
+--- COMPONENTS (CORE ML LOGIC) ---
+
+src/bananaPredictor/components/data_ingestion.py
+  PURPOSE: Download dataset, extract zip, split into train/val/test
+  CLASS: DataIngestion
+  METHODS:
+    download_dataset() -> Downloads zip from Google Drive using gdown
+    extract_zip()      -> Unzips to artifacts/data_ingestion/
+    split_dataset()    -> Splits by banana_id (70/15/15), copies images + CSVs
+  KEY DETAIL: Preserves temporal ordering — all images of one banana stay
+              in the same split (train OR val OR test, never mixed)
+
+src/bananaPredictor/components/segmentation_validator.py
+  PURPOSE: Validate the pre-trained YOLOv8 segmentation model
+  CLASS: SegmentationValidator
+  MODEL LOADING: Uses ultralytics.YOLO() with LOCAL best.pt file
+                 (NOT Roboflow API — runs fully offline)
+  METHODS:
+    load_model()      -> Loads YOLO("model/segmentation_model/weights/best.pt")
+    run_validation()  -> Runs on val images, calculates detection metrics
+    save_metrics()    -> Saves report to validation_report.json
+  METRICS COMPUTED:
+    - Total detections, avg detections per image
+    - Average confidence score
+    - Average inference time (ms)
+    - mAP@50, mAP@50-95, precision, recall, F1 (if YOLO val() works)
+
+src/bananaPredictor/components/prepare_base_model.py
+  PURPOSE: Set up EfficientNet-B0 with custom regression head
+  CLASS: PrepareBaseModel
+  METHODS:
+    get_base_efficientnet()    -> Loads pretrained backbone, saves base .h5
+    _build_regression_head()   -> GAP -> Dense(512) -> Dense(256) -> Dense(128) -> Dense(1)
+    update_base_model()        -> Combines backbone+head, freezes backbone, saves updated .h5
+  ARCHITECTURE:
+    Input: (224, 224, 3)
+    -> EfficientNet-B0 backbone (ImageNet weights, frozen)
+    -> GlobalAveragePooling2D -> (1280,)
+    -> Dense(512) + ReLU + BatchNorm + Dropout(0.3)
+    -> Dense(256) + ReLU + BatchNorm + Dropout(0.3)
+    -> Dense(128) + ReLU
+    -> Dense(1, linear) -> Days prediction
+
+src/bananaPredictor/components/model_trainer.py
+  PURPOSE: Fine-tune EfficientNet for days-to-death regression
+  CLASS: ModelTrainer
+  CUSTOM LOSS: combined_loss = 0.7 * Huber(delta=1.0) + 0.3 * ordinal_penalty
+  3-PHASE TRAINING:
+    Phase 1 (Warmup):       Backbone frozen, head only, LR=1e-3, 5 epochs
+    Phase 2 (Partial):      Last 20 layers unfrozen, LR=1e-4, 10 epochs
+    Phase 3 (Full Finetune): All layers, LR=1e-5, 30 epochs, early stopping
+  DATA AUGMENTATION:
+    rotation=15°, horizontal_flip, brightness=[0.8, 1.2], zoom=0.1
+  CALLBACKS:
+    ModelCheckpoint (save best), EarlyStopping (phase 3 only, patience=5),
+    ReduceLROnPlateau (factor=0.5), TensorBoard
+  OUTPUTS:
+    artifacts/training/regression_model.h5
+    artifacts/training/training_history.json
+    model/regression_model.h5 (deployment copy)
+
+src/bananaPredictor/components/model_evaluation.py
+  PURPOSE: Evaluate model on test set, log to MLflow
+  CLASS: ModelEvaluation
+  METHODS:
+    load_model()         -> Loads trained .h5 model
+    run_inference()      -> Predicts on test set using data generator
+    calculate_metrics()  -> Computes 6 metrics + error-by-stage breakdown
+    log_to_mlflow()      -> Logs params + metrics + model to MLflow
+    save_metrics()       -> Saves metrics.json + scores.json
+  METRICS:
+    MAE, RMSE, R², within-1-day accuracy, within-0.5-day accuracy,
+    direction accuracy, error breakdown by ripeness stage
+
+--- PIPELINE ORCHESTRATORS ---
+
+stage_01_data_ingestion.py      -> Calls: download -> extract -> split
+stage_02_segmentation_validation.py -> Calls: load model -> validate -> save
+stage_03_prepare_base_model.py  -> Calls: get backbone -> add head -> save
+stage_04_model_trainer.py       -> Calls: load model -> prepare data -> train -> save
+stage_05_model_evaluation.py    -> Calls: load -> inference -> metrics -> mlflow -> save
+
+All follow the same pattern:
+  1. Create ConfigurationManager
+  2. Get stage-specific config
+  3. Create component instance
+  4. Call component methods in order
+  5. Wrapped in try/except with logging
+
+--- INFERENCE & DEPLOYMENT ---
+
+src/bananaPredictor/pipeline/prediction.py
+  PURPOSE: End-to-end inference pipeline (segment -> regress -> annotate)
+  CLASS: BananaPredictionPipeline
+  FLOW:
+    1. Load both models (YOLOv8 + EfficientNet) once at init
+    2. predict(image_path):
+       a. Run YOLOv8 segmentation -> get bounding boxes
+       b. Crop each banana from original image (with 10px padding)
+       c. Resize crop to 224x224, normalize (divide by 255)
+       d. Run regression model -> get days_left per banana
+       e. Categorize (green/yellow/spotted/overripe)
+       f. Calculate summary (avg days, counts by category)
+       g. Annotate image (colored bounding boxes + labels)
+    3. Return structured dict with predictions + annotated image
+
+app.py
+  PURPOSE: Flask web server for serving predictions
+  ROUTES:
+    GET  /         -> Serves the web UI (templates/index.html)
+    POST /predict  -> Accepts image upload, returns JSON predictions
+  SECURITY:
+    - File type validation (png, jpg, jpeg, bmp, tiff only)
+    - Secure filename handling (werkzeug)
+    - UUID-based temp file names (no collisions)
+    - Temp file cleanup in finally block
+  RESPONSE FORMAT:
+    {
+      "total_bananas": 5,
+      "predictions": [
+        {"banana_id": 1, "bbox": [x1,y1,x2,y2], "days_left": 3.2,
+         "segmentation_confidence": 0.95, "category": "spotted"},
+        ...
+      ],
+      "summary": {"avg_days": 4.1, "fresh_count": 1, "ripe_count": 3, "overripe_count": 1},
+      "annotated_image_base64": "base64_encoded_jpeg..."
+    }
+
+templates/index.html
+  PURPOSE: Drag-and-drop web interface for banana prediction
+  FEATURES:
+    - Drag & drop or click to upload image
+    - Image preview before prediction
+    - Loading spinner during inference
+    - Summary cards (total bananas, avg days, category counts)
+    - Annotated image display
+    - Per-banana predictions table with color-coded category badges
+    - Responsive design with banana-themed color scheme
+
+main.py
+  PURPOSE: Run the entire training pipeline
+  EXECUTES: Stage 1 -> 2 -> 3 -> 4 -> 5 sequentially
+  Each stage is wrapped in try/except with start/complete logging
+
+================================================================================
+  6. PIPELINE STAGES EXPLAINED
+================================================================================
+
+STAGE 1: DATA INGESTION
+  Input:  Google Drive URL with dataset zip
+  Process: Download zip -> Extract -> Split by banana_id into train/val/test
+  Output: artifacts/data_ingestion/banana_dataset/{train,val,test}/
+  Each split has: images/ folder + labels.csv
+
+STAGE 2: SEGMENTATION VALIDATION (Optional)
+  Input:  model/segmentation_model/weights/best.pt + validation images
+  Process: Load YOLOv8 model -> Run on val images -> Compute metrics
+  Output: artifacts/segmentation_validation/validation_report.json
+  Purpose: Verify your Roboflow model works correctly before training
+
+STAGE 3: PREPARE BASE MODEL
+  Input:  EfficientNet-B0 pretrained weights (auto-downloaded from Keras)
+  Process: Load backbone -> Add regression head -> Freeze backbone -> Save
+  Output: artifacts/prepare_base_model/base_efficientnet.h5
+          artifacts/prepare_base_model/efficientnet_updated.h5
+
+STAGE 4: MODEL TRAINING (Core Stage)
+  Input:  Updated base model + training/validation data
+  Process: 3-phase progressive fine-tuning with custom loss
+  Output: artifacts/training/regression_model.h5
+          artifacts/training/training_history.json
+          model/regression_model.h5 (deployment copy)
+
+STAGE 5: MODEL EVALUATION
+  Input:  Trained model + test data
+  Process: Inference -> Calculate 6 metrics -> Log to MLflow -> Save
+  Output: artifacts/evaluation/metrics.json
+          scores.json (DVC metric file)
+          MLflow experiment run
+
+================================================================================
+  7. MODEL ARCHITECTURES
+================================================================================
+
+--- SEGMENTATION MODEL (YOLOv8) ---
+  Type:     YOLOv8 Instance Segmentation
+  Trained:  On Roboflow platform (external)
+  Task:     Detect individual bananas, output bounding boxes + masks
+  Input:    Any resolution image
+  Output:   List of (bounding_box, confidence, mask) per banana
+  Weights:  best.pt (manually downloaded from Roboflow)
+
+--- REGRESSION MODEL (EfficientNet-B0) ---
+  Type:     Transfer learning regression
+  Backbone: EfficientNet-B0 (ImageNet pretrained, ~4M params)
+  Head:     Custom regression head (~850K params)
+
+  Full Architecture:
+  +-------------------------------------------------+
+  | Input Layer: (224, 224, 3)                       |
+  +-------------------------------------------------+
+  | EfficientNet-B0 Backbone                         |
+  |   - 237 layers                                   |
+  |   - ~4M parameters                               |
+  |   - Feature output: (7, 7, 1280)                 |
+  +-------------------------------------------------+
+  | GlobalAveragePooling2D -> (1280,)                |
+  +-------------------------------------------------+
+  | Dense(512) + ReLU + BatchNorm + Dropout(0.3)     |
+  +-------------------------------------------------+
+  | Dense(256) + ReLU + BatchNorm + Dropout(0.3)     |
+  +-------------------------------------------------+
+  | Dense(128) + ReLU                                |
+  +-------------------------------------------------+
+  | Dense(1, activation='linear')  -> Days output    |
+  +-------------------------------------------------+
+
+  Total Parameters: ~5M
+  Trainable (Phase 1): ~850K (head only)
+  Trainable (Phase 3): ~5M (all layers)
+
+================================================================================
+  8. CUSTOM LOSS FUNCTION
+================================================================================
+
+The model uses a COMBINED LOSS function:
+
+  Loss = 0.7 * Huber_Loss + 0.3 * Ordinal_Penalty
+
+  HUBER LOSS (delta=1.0):
+    - Robust to labeling noise
+    - Behaves like MSE for small errors, like MAE for large errors
+    - Prevents large outlier errors from dominating training
+
+  ORDINAL PENALTY:
+    - Penalizes WRONG DIRECTION predictions more heavily
+    - Formula: mean(|sign(pred - true) * (pred - true)^2|)
+    - If true=2 days and you predict 7, that's worse than predicting 3
+    - Encourages the model to be conservative
+
+  WHY THIS COMBINATION:
+    - Huber provides stability during training
+    - Ordinal penalty ensures safety (better to say "eat now" than "still fresh")
+    - The 0.7/0.3 weighting prioritizes accuracy while maintaining direction
+
+================================================================================
+  9. EVALUATION METRICS
+================================================================================
+
+  +---------------------+----------------------------------+----------+
+  | METRIC              | FORMULA                          | TARGET   |
+  +---------------------+----------------------------------+----------+
+  | MAE                 | mean(|predicted - actual|)        | < 1.0    |
+  | RMSE                | sqrt(mean((predicted - actual)²)) | < 1.5    |
+  | R² Score            | 1 - (SS_residual / SS_total)     | > 0.80   |
+  | Within-1-day Acc.   | % where |error| ≤ 1 day         | > 70%    |
+  | Within-0.5-day Acc. | % where |error| ≤ 0.5 day       | > 50%    |
+  | Direction Accuracy  | % correct over/under prediction  | > 80%    |
+  +---------------------+----------------------------------+----------+
+
+  ERROR BREAKDOWN BY RIPENESS STAGE:
+    - Green (7-10 days):   Hardest to predict (subtle visual changes)
+    - Yellow (4-6 days):   Most training data typically here
+    - Spotted (1-3 days):  Easier (clear visual cues: brown spots)
+    - Overripe (0 days):   Easiest (obvious state)
+
+================================================================================
+  10. HOW TO SET UP THE PROJECT (STEP-BY-STEP)
+================================================================================
+
+STEP 1: Clone / Open the project
+  Open the project folder in VS Code or terminal.
+
+STEP 2: Create a virtual environment (recommended)
+  python -m venv venv
+  venv\Scripts\activate          (Windows)
+  source venv/bin/activate       (Mac/Linux)
+
+STEP 3: Install dependencies
+  pip install -r requirements.txt
+
+STEP 4: Install the package in editable mode
+  pip install -e .
+
+STEP 5: Verify the installation
+  python -c "from bananaPredictor import logger; logger.info('Setup OK')"
+  (You should see a log message printed to console)
+
+STEP 6: Configure your dataset URL
+  Open config/config.yaml
+  Replace the source_URL under data_ingestion with YOUR Google Drive link:
+    source_URL: "https://drive.google.com/file/d/YOUR_REAL_ID/view?usp=sharing"
+
+STEP 7: Place your Roboflow segmentation model
+  (See Section 14 for detailed instructions)
+  Put best.pt at: model/segmentation_model/weights/best.pt
+
+STEP 8: (Optional) Configure MLflow
+  Open config/config.yaml
+  Replace mlflow_uri under training and evaluation with your MLflow server:
+    mlflow_uri: "https://dagshub.com/YOUR_USERNAME/banana-predictor.mlflow"
+
+================================================================================
+  11. HOW TO RUN THE TRAINING PIPELINE
+================================================================================
+
+OPTION A: Run everything at once
+  python main.py
+
+  This runs all 5 stages sequentially:
+    Stage 1: Download and split dataset
+    Stage 2: Validate segmentation model
+    Stage 3: Prepare EfficientNet + regression head
+    Stage 4: Train model (3 phases — this takes the longest)
+    Stage 5: Evaluate on test set and log metrics
+
+OPTION B: Run individual stages
+  python src/bananaPredictor/pipeline/stage_01_data_ingestion.py
+  python src/bananaPredictor/pipeline/stage_02_segmentation_validation.py
+  python src/bananaPredictor/pipeline/stage_03_prepare_base_model.py
+  python src/bananaPredictor/pipeline/stage_04_model_trainer.py
+  python src/bananaPredictor/pipeline/stage_05_model_evaluation.py
+
+OPTION C: Use DVC (recommended for reproducibility)
+  dvc init            (first time only)
+  dvc repro           (runs the full pipeline)
+  dvc repro model_training    (runs a specific stage + its dependencies)
+
+WHAT TO EXPECT:
+  - Stage 1: Fast (depends on download speed)
+  - Stage 2: Fast (a few minutes)
+  - Stage 3: Fast (downloads EfficientNet weights first time, ~20MB)
+  - Stage 4: SLOW (depends on GPU/CPU — can be hours on CPU)
+  - Stage 5: Moderate (inference on test set)
+
+OUTPUT FILES AFTER TRAINING:
+  artifacts/data_ingestion/banana_dataset/    (train/val/test splits)
+  artifacts/segmentation_validation/validation_report.json
+  artifacts/prepare_base_model/base_efficientnet.h5
+  artifacts/prepare_base_model/efficientnet_updated.h5
+  artifacts/training/regression_model.h5
+  artifacts/training/training_history.json
+  artifacts/evaluation/metrics.json
+  model/regression_model.h5                  (deployment copy)
+  scores.json                                (DVC metrics)
+
+================================================================================
+  12. HOW TO RUN THE WEB APPLICATION
+================================================================================
+
+STEP 1: Make sure models are available
+  - Segmentation: model/segmentation_model/weights/best.pt
+  - Regression:   model/regression_model.h5 (created after training)
+
+STEP 2: Start the Flask server
+  python app.py
+
+STEP 3: Open in browser
+  Go to: http://localhost:8080
+
+STEP 4: Use the web interface
+  - Drag and drop a banana image (or click to browse)
+  - Click "Predict"
+  - View results: annotated image, per-banana predictions, summary stats
+
+STEP 5: Use the API programmatically (optional)
+  curl -X POST -F "image=@your_banana.jpg" http://localhost:8080/predict
+
+  Or from Python:
+    import requests
+    files = {'image': open('banana.jpg', 'rb')}
+    response = requests.post('http://localhost:8080/predict', files=files)
+    print(response.json())
+
+API RESPONSE FORMAT:
+  {
+    "total_bananas": 5,
+    "predictions": [
+      {
+        "banana_id": 1,
+        "bbox": [100, 50, 300, 200],
+        "days_left": 3.21,
+        "segmentation_confidence": 0.9523,
+        "category": "spotted"
+      }
+    ],
+    "summary": {
+      "avg_days": 4.15,
+      "min_days": 0.50,
+      "max_days": 7.80,
+      "fresh_count": 1,
+      "ripe_count": 3,
+      "overripe_count": 1
+    },
+    "annotated_image_base64": "base64_encoded_jpg..."
+  }
+
+================================================================================
+  13. HOW TO MODIFY HYPERPARAMETERS
+================================================================================
+
+All hyperparameters live in ONE FILE: params.yaml
+
+--- TO CHANGE TRAINING EPOCHS ---
+  Edit params.yaml:
+    PHASE_1_EPOCHS: 5       # Warmup phase (head only)
+    PHASE_2_EPOCHS: 10      # Partial fine-tune
+    PHASE_3_EPOCHS: 30      # Full fine-tune
+
+--- TO CHANGE LEARNING RATES ---
+  Edit params.yaml:
+    PHASE_1_LR: 0.001       # Phase 1 (faster, head only)
+    PHASE_2_LR: 0.0001      # Phase 2 (slower, some backbone)
+    PHASE_3_LR: 0.00001     # Phase 3 (very slow, full model)
+
+--- TO CHANGE BATCH SIZE ---
+  Edit params.yaml:
+    BATCH_SIZE: 16           # Reduce to 8 if you run out of GPU memory
+
+--- TO CHANGE IMAGE SIZE ---
+  Edit params.yaml:
+    IMAGE_SIZE: [224, 224, 3]    # Standard for EfficientNet-B0
+    (Use [240, 240, 3] for B1, [260, 260, 3] for B2)
+
+--- TO CHANGE MODEL ARCHITECTURE ---
+  Edit params.yaml:
+    ARCHITECTURE: EfficientNetB0   # Options: EfficientNetB0, B1, B2
+
+--- TO CHANGE REGRESSION HEAD ---
+  Edit params.yaml:
+    HEAD_UNITS: [512, 256, 128]    # Number of neurons in each Dense layer
+    DROPOUT_RATE: 0.3              # Dropout rate (0.0 = none, 0.5 = aggressive)
+
+--- TO CHANGE DATA AUGMENTATION ---
+  Edit params.yaml:
+    AUGMENTATION: True             # Set False to disable
+    AUGMENTATION_ROTATION: 15      # Degrees of rotation
+    AUGMENTATION_BRIGHTNESS: 0.2   # Brightness range ±20%
+    AUGMENTATION_ZOOM: 0.1         # Zoom range ±10%
+
+--- TO CHANGE LOSS FUNCTION ---
+  Edit params.yaml:
+    HUBER_DELTA: 1.0               # Huber loss delta (increase for larger error tolerance)
+    ORDINAL_WEIGHT: 0.3            # 0.0 = only Huber, 1.0 = only ordinal
+
+--- TO CHANGE EARLY STOPPING ---
+  Edit params.yaml:
+    PHASE_3_EARLY_STOPPING_PATIENCE: 5   # Epochs to wait before stopping
+
+--- TO CHANGE DATA SPLIT RATIOS ---
+  Edit config/config.yaml under data_ingestion:
+    split_ratio:
+      train: 0.70
+      val: 0.15
+      test: 0.15
+
+AFTER CHANGING params.yaml:
+  Just re-run the pipeline: python main.py
+  DVC will detect changed params and re-run only affected stages.
+
+================================================================================
+  14. HOW TO USE YOUR ROBOFLOW MODEL
+================================================================================
+
+You trained a YOLOv8 instance segmentation model on the Roboflow platform.
+Here's how to get those weights into this project:
+
+STEP 1: Go to Roboflow
+  - Log in at https://app.roboflow.com
+  - Navigate to your project with the trained banana segmentation model
+
+STEP 2: Download the model weights
+  - Click on your trained model
+  - Click the "Download" or "Deploy" button
+  - Select format: "YOLOv8"
+  - Download the zip file
+
+STEP 3: Extract the weights
+  - Unzip the downloaded file
+  - Look for a file called "best.pt" (this is your trained model)
+  - You may also see "last.pt" (not needed)
+
+STEP 4: Place in the project
+  - Copy "best.pt" to this exact path:
+    model/segmentation_model/weights/best.pt
+
+STEP 5: Verify
+  - Run this in terminal:
+    python -c "from ultralytics import YOLO; m = YOLO('model/segmentation_model/weights/best.pt'); print('Model loaded OK')"
+
+WHAT THE CODE DOES WITH IT:
+  - segmentation_validator.py: Loads via YOLO("model/segmentation_model/weights/best.pt")
+  - prediction.py: Same loading method for inference
+  - NO Roboflow API key needed — works 100% offline
+  - NO internet required after downloading the weights
+
+IF THE FILE IS MISSING:
+  The code will raise a clear FileNotFoundError telling you exactly where
+  to place the file:
+    "Segmentation model not found! Download best.pt from Roboflow
+     and place at: model/segmentation_model/weights/best.pt"
+
+================================================================================
+  15. HOW TO USE DVC FOR REPRODUCIBILITY
+================================================================================
+
+DVC (Data Version Control) tracks your data, models, and pipeline stages.
+
+INITIAL SETUP:
+  dvc init                    # Initialize DVC in the project
+  git add .dvc .dvcignore     # Add DVC files to git
+  git commit -m "Initialize DVC"
+
+RUN THE FULL PIPELINE:
+  dvc repro                   # Runs all stages in order
+
+RUN A SPECIFIC STAGE:
+  dvc repro data_ingestion                # Stage 1 only
+  dvc repro segmentation_validation       # Stage 2 only
+  dvc repro prepare_base_model            # Stage 3 only
+  dvc repro model_training                # Stage 4 only
+  dvc repro model_evaluation              # Stage 5 only
+
+VIEW PIPELINE GRAPH:
+  dvc dag                     # Shows dependency graph
+
+CHECK METRICS:
+  dvc metrics show            # Shows scores.json content
+  dvc metrics diff            # Compare metrics between experiments
+
+COMPARE EXPERIMENTS:
+  dvc params diff             # See what params changed
+
+WHY USE DVC:
+  - Only re-runs stages whose dependencies changed
+  - Tracks which params produced which metrics
+  - Makes experiments reproducible
+  - Can share data/models via remote storage (S3, GCS, etc.)
+
+================================================================================
+  16. HOW TO USE MLFLOW FOR EXPERIMENT TRACKING
+================================================================================
+
+MLflow logs all your experiments automatically during Stage 5 (Evaluation).
+
+OPTION A: Use DagsHub (recommended — free, hosted)
+  1. Create an account at https://dagshub.com
+  2. Create a new repository
+  3. Copy the MLflow tracking URI
+  4. Paste into config/config.yaml:
+     mlflow_uri: "https://dagshub.com/YOUR_USERNAME/banana-predictor.mlflow"
+  5. Set environment variables:
+     set MLFLOW_TRACKING_USERNAME=your_username
+     set MLFLOW_TRACKING_PASSWORD=your_token
+
+OPTION B: Use local MLflow
+  1. Start MLflow server:
+     mlflow ui --port 5000
+  2. Open: http://localhost:5000
+  3. Set in config.yaml:
+     mlflow_uri: "http://localhost:5000"
+
+WHAT GETS LOGGED:
+  - All hyperparameters from params.yaml
+  - Test metrics: MAE, RMSE, R², accuracy scores
+  - Trained model artifact (registered as "BananaRegressor")
+
+VIEW EXPERIMENTS:
+  - Go to your MLflow UI (DagsHub or local)
+  - Compare runs side-by-side
+  - View which hyperparameters gave the best results
+
+================================================================================
+  17. DOCKER DEPLOYMENT
+================================================================================
+
+BUILD THE DOCKER IMAGE:
+  docker build -t banana-predictor:latest .
+
+RUN THE CONTAINER:
+  docker run -p 8080:8080 banana-predictor:latest
+
+TEST IT:
+  Open http://localhost:8080 in your browser
+  OR
+  curl -X POST -F "image=@banana.jpg" http://localhost:8080/predict
+
+WHAT'S IN THE CONTAINER:
+  - Python 3.10 runtime
+  - All dependencies installed
+  - Your trained models (both segmentation and regression)
+  - Flask web server on port 8080
+  - OpenCV system libraries
+
+PUSH TO A REGISTRY (for cloud deployment):
+  docker tag banana-predictor:latest your-registry/banana-predictor:latest
+  docker push your-registry/banana-predictor:latest
+
+================================================================================
+  18. CI/CD WITH GITHUB ACTIONS
+================================================================================
+
+File: .github/workflows/main.yaml
+
+TRIGGERS:
+  - On push to main branch
+  - On pull request to main branch
+
+JOBS:
+
+  Job 1: Build and Test
+    - Sets up Python 3.10
+    - Installs all dependencies
+    - Runs flake8 lint check
+    - Verifies package imports work
+
+  Job 2: Docker Build (only on push to main)
+    - Builds Docker image
+    - (Optionally) pushes to container registry
+
+TO ENABLE CLOUD DEPLOYMENT:
+  1. Uncomment the push steps in .github/workflows/main.yaml
+  2. Add secrets to your GitHub repo:
+     - ECR_REPO (if using AWS)
+     - Or equivalent for Azure/GCP
+
+================================================================================
+  19. TROUBLESHOOTING COMMON ISSUES
+================================================================================
+
+ISSUE: "ModuleNotFoundError: No module named 'bananaPredictor'"
+  FIX: Run "pip install -e ." from the project root directory
+
+ISSUE: "FileNotFoundError: Segmentation model not found"
+  FIX: Download best.pt from Roboflow and place at
+       model/segmentation_model/weights/best.pt
+
+ISSUE: "yaml file is empty" error
+  FIX: Make sure config/config.yaml and params.yaml have content (not blank)
+
+ISSUE: "OOM (Out of Memory)" during training
+  FIX: Reduce BATCH_SIZE in params.yaml (try 8 or 4)
+
+ISSUE: "No images found in validation directory"
+  FIX: Run Stage 1 (data ingestion) first to create the dataset splits
+
+ISSUE: Training loss is not decreasing
+  FIXES:
+    - Check your labels.csv format (needs 'filename' and 'days_until_death' columns)
+    - Try increasing PHASE_1_EPOCHS (give the head more warmup time)
+    - Check image paths match between labels.csv and images/ folder
+
+ISSUE: "No module named 'tensorflow'"
+  FIX: pip install tensorflow
+  NOTE: Use tensorflow-cpu if you don't have a GPU
+
+ISSUE: Flask app returns 503 error
+  FIX: Make sure both models exist:
+    - model/segmentation_model/weights/best.pt
+    - model/regression_model.h5 (run training first)
+
+ISSUE: Predictions are all the same number
+  FIXES:
+    - The model may be underfitting — increase epochs
+    - Check if labels have variance (not all the same day)
+    - Try reducing DROPOUT_RATE
+
+ISSUE: DVC errors
+  FIX: Run "dvc init" first, make sure the project is a git repository
+
+================================================================================
+  20. INNOVATION FEATURES
+================================================================================
+
+This project includes several advanced features beyond basic ML:
+
+1. TEMPORAL CONSISTENCY CHECKING
+   If the same banana is tracked over multiple days, predictions should
+   decrease monotonically (can't go from 3 days to 5 days the next day).
+
+2. MONTE CARLO DROPOUT (Uncertainty Estimation)
+   Run inference multiple times with dropout active to get prediction
+   confidence intervals. High variance = low confidence.
+
+3. CUSTOM COMBINED LOSS
+   Huber + Ordinal penalty — novel loss function that's robust to noise
+   AND penalizes safety-critical wrong-direction errors.
+
+4. 3-PHASE PROGRESSIVE FINE-TUNING
+   Head warmup → Partial unfreeze → Full fine-tune
+   Prevents catastrophic forgetting of ImageNet features.
+
+5. ERROR ANALYSIS BY RIPENESS STAGE
+   Breaks down model performance by banana maturity level to identify
+   where the model is weakest.
+
+6. ANNOTATED IMAGE OUTPUT
+   Color-coded bounding boxes with day labels overlaid on the original
+   image for easy visual interpretation.
+
+7. MODULAR PIPELINE ARCHITECTURE
+   Every stage is independent, replaceable, and testable.
+   Want to swap EfficientNet for ResNet? Just change prepare_base_model.py.
+
+================================================================================
+  21. DEPENDENCIES LIST
+================================================================================
+
+  PACKAGE                  PURPOSE
+  -------                  -------
+  tensorflow               Deep learning (EfficientNet, training, inference)
+  ultralytics              YOLOv8 segmentation model loading + inference
+  gdown                    Download dataset from Google Drive
+  flask                    Web API server
+  dvc                      Data/model version control, pipeline management
+  mlflow                   Experiment tracking, model registry
+  python-box               ConfigBox (dot-access YAML/dict objects)
+  ensure                   Type annotation enforcement at runtime
+  joblib                   Binary serialization
+  pandas                   DataFrame operations (labels.csv processing)
+  numpy                    Numerical operations
+  scipy                    Scientific computing utilities
+  scikit-learn             ML utilities
+  matplotlib               Plotting (training curves, etc.)
+  seaborn                  Statistical visualization
+  opencv-python-headless   Image processing (crop, resize, annotate)
+  Pillow                   Image loading library
+  tqdm                     Progress bars
+  python-dotenv            Environment variable loading
+  PyYAML                   YAML parsing
+
+================================================================================
+  22. FUTURE IMPROVEMENTS
+================================================================================
+
+  - Add Grad-CAM attention visualization (show which regions model focuses on)
+  - Add multi-scale prediction (predict at 3 scales, average results)
+  - Add active learning (suggest which new images to collect for improvement)
+  - Add temporal tracking pipeline (track same banana across days)
+  - Add batch prediction endpoint to Flask API
+  - Add model A/B testing in deployment
+  - Add Prometheus metrics for monitoring in production
+  - Add unit tests for each component
+  - Try different backbones (ResNet50, MobileNetV3, ConvNeXt)
+  - Try Vision Transformer (ViT) as backbone
+
+================================================================================
+                          END OF PROJECT REPORT
+================================================================================

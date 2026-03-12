@@ -1,0 +1,43 @@
+artifacts_root: artifacts
+
+data_ingestion:
+  root_dir: artifacts/data_ingestion
+  source_URL: "https://drive.google.com/file/d/YOUR_DATASET_ID/view?usp=sharing"
+  local_data_file: artifacts/data_ingestion/banana_dataset.zip
+  unzip_dir: artifacts/data_ingestion
+  dataset_dir: artifacts/data_ingestion/banana_dataset
+  train_dir: artifacts/data_ingestion/banana_dataset/train
+  val_dir: artifacts/data_ingestion/banana_dataset/val
+  test_dir: artifacts/data_ingestion/banana_dataset/test
+  split_ratio:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+
+segmentation_validation:
+  root_dir: artifacts/segmentation_validation
+  model_path: model/segmentation_model/weights/best.pt
+  confidence_threshold: 0.5
+  validation_data: artifacts/data_ingestion/banana_dataset/val
+  report_path: artifacts/segmentation_validation/validation_report.json
+
+prepare_base_model:
+  root_dir: artifacts/prepare_base_model
+  base_model_path: artifacts/prepare_base_model/base_efficientnet.h5
+  updated_base_model_path: artifacts/prepare_base_model/efficientnet_updated.h5
+
+training:
+  root_dir: artifacts/training
+  trained_model_path: artifacts/training/regression_model.h5
+  training_data: artifacts/data_ingestion/banana_dataset/train
+  validation_data: artifacts/data_ingestion/banana_dataset/val
+  history_path: artifacts/training/training_history.json
+  mlflow_uri: "https://dagshub.com/YOUR_USERNAME/banana-predictor.mlflow"
+
+evaluation:
+  root_dir: artifacts/evaluation
+  test_data: artifacts/data_ingestion/banana_dataset/test
+  trained_model_path: artifacts/training/regression_model.h5
+  metrics_path: artifacts/evaluation/metrics.json
+  scores_file: scores.json
+  mlflow_uri: "https://dagshub.com/YOUR_USERNAME/banana-predictor.mlflow"
