@@ -14,6 +14,36 @@ data_ingestion:
     val: 0.15
     test: 0.15
 
+seg_data_preparation:
+  root_dir: artifacts/seg_data
+  raw_data_dir: artifacts/seg_data/raw
+  coco_annotation_file: artifacts/seg_data/raw/_annotations.coco.json
+  yolo_output_dir: artifacts/seg_data/yolo_format
+  yolo_images_dir: artifacts/seg_data/yolo_format/images
+  yolo_labels_dir: artifacts/seg_data/yolo_format/labels
+
+seg_data_splitter:
+  root_dir: artifacts/seg_data_split
+  source_images_dir: artifacts/seg_data/yolo_format/images
+  source_labels_dir: artifacts/seg_data/yolo_format/labels
+  train_dir: artifacts/seg_data_split/train
+  val_dir: artifacts/seg_data_split/val
+  test_dir: artifacts/seg_data_split/test
+  dataset_yaml_path: artifacts/seg_data_split/data.yaml
+  split_ratio:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+
+seg_model_training:
+  root_dir: artifacts/seg_training
+  base_model: yolov8n-seg
+  dataset_yaml_path: artifacts/seg_data_split/data.yaml
+  trained_weights_dir: artifacts/seg_training/weights
+  best_weights_path: artifacts/seg_training/weights/best.pt
+  export_weights_path: model/segmentation_model/weights/best.pt
+  training_results_dir: artifacts/seg_training/results
+
 segmentation_validation:
   root_dir: artifacts/segmentation_validation
   model_path: model/segmentation_model/weights/best.pt

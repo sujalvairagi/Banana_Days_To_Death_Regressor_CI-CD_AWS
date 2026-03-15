@@ -2,6 +2,9 @@ from bananaPredictor.constants import CONFIG_FILE_PATH, PARAMS_FILE_PATH
 from bananaPredictor.utils.common import read_yaml, create_directories
 from bananaPredictor.entity.config_entity import (
     DataIngestionConfig,
+    SegDataPreparationConfig,
+    SegDataSplitterConfig,
+    SegModelTrainingConfig,
     SegmentationValidationConfig,
     PrepareBaseModelConfig,
     TrainingConfig,
@@ -39,6 +42,62 @@ class ConfigurationManager:
         )
 
         return data_ingestion_config
+
+    def get_seg_data_preparation_config(self) -> SegDataPreparationConfig:
+        config = self.config.seg_data_preparation
+
+        create_directories([config.root_dir, config.raw_data_dir])
+
+        seg_data_config = SegDataPreparationConfig(
+            root_dir=Path(config.root_dir),
+            raw_data_dir=Path(config.raw_data_dir),
+            coco_annotation_file=Path(config.coco_annotation_file),
+            yolo_output_dir=Path(config.yolo_output_dir),
+            yolo_images_dir=Path(config.yolo_images_dir),
+            yolo_labels_dir=Path(config.yolo_labels_dir),
+        )
+
+        return seg_data_config
+
+    def get_seg_data_splitter_config(self) -> SegDataSplitterConfig:
+        config = self.config.seg_data_splitter
+
+        create_directories([config.root_dir])
+
+        seg_split_config = SegDataSplitterConfig(
+            root_dir=Path(config.root_dir),
+            source_images_dir=Path(config.source_images_dir),
+            source_labels_dir=Path(config.source_labels_dir),
+            train_dir=Path(config.train_dir),
+            val_dir=Path(config.val_dir),
+            test_dir=Path(config.test_dir),
+            dataset_yaml_path=Path(config.dataset_yaml_path),
+            split_ratio=dict(config.split_ratio),
+        )
+
+        return seg_split_config
+
+    def get_seg_model_training_config(self) -> SegModelTrainingConfig:
+        config = self.config.seg_model_training
+
+        create_directories([config.root_dir, config.trained_weights_dir])
+
+        seg_train_config = SegModelTrainingConfig(
+            root_dir=Path(config.root_dir),
+            base_model=config.base_model,
+            dataset_yaml_path=Path(config.dataset_yaml_path),
+            trained_weights_dir=Path(config.trained_weights_dir),
+            best_weights_path=Path(config.best_weights_path),
+            export_weights_path=Path(config.export_weights_path),
+            training_results_dir=Path(config.training_results_dir),
+            params_epochs=self.params.SEG_EPOCHS,
+            params_image_size=self.params.SEG_IMAGE_SIZE,
+            params_batch_size=self.params.SEG_BATCH_SIZE,
+            params_lr=self.params.SEG_LR,
+            params_patience=self.params.SEG_PATIENCE,
+        )
+
+        return seg_train_config
 
     def get_segmentation_validation_config(self) -> SegmentationValidationConfig:
         config = self.config.segmentation_validation

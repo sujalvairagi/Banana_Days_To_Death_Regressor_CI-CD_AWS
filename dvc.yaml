@@ -8,10 +8,53 @@ stages:
     outs:
       - artifacts/data_ingestion/banana_dataset
 
-  segmentation_validation:
-    cmd: python src/bananaPredictor/pipeline/stage_02_segmentation_validation.py
+  seg_data_preparation:
+    cmd: python src/bananaPredictor/pipeline/stage_02_seg_data_preparation.py
     deps:
-      - src/bananaPredictor/pipeline/stage_02_segmentation_validation.py
+      - src/bananaPredictor/pipeline/stage_02_seg_data_preparation.py
+      - src/bananaPredictor/components/seg_data_preparation.py
+      - artifacts/seg_data/raw
+      - config/config.yaml
+    outs:
+      - artifacts/seg_data/yolo_format
+
+  seg_data_splitter:
+    cmd: python src/bananaPredictor/pipeline/stage_03_seg_data_splitter.py
+    deps:
+      - src/bananaPredictor/pipeline/stage_03_seg_data_splitter.py
+      - src/bananaPredictor/components/seg_data_splitter.py
+      - artifacts/seg_data/yolo_format
+      - config/config.yaml
+    outs:
+      - artifacts/seg_data_split/train
+      - artifacts/seg_data_split/val
+      - artifacts/seg_data_split/test
+      - artifacts/seg_data_split/data.yaml
+
+  seg_model_training:
+    cmd: python src/bananaPredictor/pipeline/stage_04_seg_model_trainer.py
+    deps:
+      - src/bananaPredictor/pipeline/stage_04_seg_model_trainer.py
+      - src/bananaPredictor/components/seg_model_trainer.py
+      - artifacts/seg_data_split/data.yaml
+      - artifacts/seg_data_split/train
+      - artifacts/seg_data_split/val
+      - config/config.yaml
+    params:
+      - SEG_MODEL_SIZE
+      - SEG_EPOCHS
+      - SEG_IMAGE_SIZE
+      - SEG_BATCH_SIZE
+      - SEG_LR
+      - SEG_PATIENCE
+    outs:
+      - artifacts/seg_training/weights/best.pt
+      - artifacts/seg_training/results
+
+  segmentation_validation:
+    cmd: python src/bananaPredictor/pipeline/stage_05_segmentation_validation.py
+    deps:
+      - src/bananaPredictor/pipeline/stage_05_segmentation_validation.py
       - src/bananaPredictor/components/segmentation_validator.py
       - artifacts/data_ingestion/banana_dataset/val
       - config/config.yaml
@@ -20,9 +63,9 @@ stages:
       - artifacts/segmentation_validation/validation_report.json
 
   prepare_base_model:
-    cmd: python src/bananaPredictor/pipeline/stage_03_prepare_base_model.py
+    cmd: python src/bananaPredictor/pipeline/stage_06_prepare_base_model.py
     deps:
-      - src/bananaPredictor/pipeline/stage_03_prepare_base_model.py
+      - src/bananaPredictor/pipeline/stage_06_prepare_base_model.py
       - src/bananaPredictor/components/prepare_base_model.py
       - config/config.yaml
     params:
@@ -37,9 +80,9 @@ stages:
       - artifacts/prepare_base_model/efficientnet_updated.h5
 
   model_training:
-    cmd: python src/bananaPredictor/pipeline/stage_04_model_trainer.py
+    cmd: python src/bananaPredictor/pipeline/stage_07_model_trainer.py
     deps:
-      - src/bananaPredictor/pipeline/stage_04_model_trainer.py
+      - src/bananaPredictor/pipeline/stage_07_model_trainer.py
       - src/bananaPredictor/components/model_trainer.py
       - artifacts/prepare_base_model/efficientnet_updated.h5
       - artifacts/data_ingestion/banana_dataset/train
@@ -60,9 +103,9 @@ stages:
       - artifacts/training/training_history.json
 
   model_evaluation:
-    cmd: python src/bananaPredictor/pipeline/stage_05_model_evaluation.py
+    cmd: python src/bananaPredictor/pipeline/stage_08_model_evaluation.py
     deps:
-      - src/bananaPredictor/pipeline/stage_05_model_evaluation.py
+      - src/bananaPredictor/pipeline/stage_08_model_evaluation.py
       - src/bananaPredictor/components/model_evaluation.py
       - artifacts/training/regression_model.h5
       - artifacts/data_ingestion/banana_dataset/test

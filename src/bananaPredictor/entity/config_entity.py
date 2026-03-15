@@ -16,6 +16,44 @@ class DataIngestionConfig:
 
 
 @dataclass(frozen=True)
+class SegDataPreparationConfig:
+    root_dir: Path
+    raw_data_dir: Path
+    coco_annotation_file: Path
+    yolo_output_dir: Path
+    yolo_images_dir: Path
+    yolo_labels_dir: Path
+
+
+@dataclass(frozen=True)
+class SegDataSplitterConfig:
+    root_dir: Path
+    source_images_dir: Path
+    source_labels_dir: Path
+    train_dir: Path
+    val_dir: Path
+    test_dir: Path
+    dataset_yaml_path: Path
+    split_ratio: dict
+
+
+@dataclass(frozen=True)
+class SegModelTrainingConfig:
+    root_dir: Path
+    base_model: str
+    dataset_yaml_path: Path
+    trained_weights_dir: Path
+    best_weights_path: Path
+    export_weights_path: Path
+    training_results_dir: Path
+    params_epochs: int
+    params_image_size: int
+    params_batch_size: int
+    params_lr: float
+    params_patience: int
+
+
+@dataclass(frozen=True)
 class SegmentationValidationConfig:
     root_dir: Path
     model_path: Path

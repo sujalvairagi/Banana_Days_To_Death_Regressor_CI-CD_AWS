@@ -1,3 +1,18 @@
+# ============================================
+# Segmentation Model (YOLOv8) Hyperparameters
+# ============================================
+SEG_MODEL_SIZE: yolov8n-seg
+SEG_EPOCHS: 50
+SEG_IMAGE_SIZE: 640
+SEG_BATCH_SIZE: 16
+SEG_LR: 0.01
+SEG_PATIENCE: 10
+SEG_CONFIDENCE_THRESHOLD: 0.5
+
+# ============================================
+# Regression Model Hyperparameters
+# ============================================
+
 # Data Augmentation
 AUGMENTATION: True
 AUGMENTATION_ROTATION: 15
